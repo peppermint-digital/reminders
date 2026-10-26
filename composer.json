@@ -1,0 +1,48 @@
+{
+    "name": "peppermint/reminders",
+    "description": "Reminder core for Laravel — a reminder on anything: a task, an appointment, whatever the application registers. Stores, queries and reports; delivery is bridged to peppermint/notifications when that package is present.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Peppermint Digital",
+            "email": "hello@peppermint-digital.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "illuminate/database": "^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0"
+    },
+    "suggest": {
+        "peppermint/notifications": "For the delivery bridge: a due reminder becomes a notification, routed by the person's own per-channel preferences. Optional — Regel 7 des Paketvertrags: nicht erzwungen, damit das Paket fuer sich installierbar bleibt. Without it the package still stores, queries and reports; the product delivers."
+    },
+    "autoload": {
+        "psr-4": {
+            "Peppermint\\Reminders\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Peppermint\\Reminders\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Peppermint\\Reminders\\RemindersServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
