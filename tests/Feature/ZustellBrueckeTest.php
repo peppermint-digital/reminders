@@ -140,3 +140,39 @@ it('achtet den Deckel', function () {
     expect(bruecke()->zustellen(2))->toBe(2);
     expect(Reminder::query()->undelivered()->count())->toBe(2);
 });
+
+it('faellt nicht ueber einen Gegenstand, dessen Klasse es nicht mehr gibt', function () {
+    // Unter Altbestaenden liegen Typen aus frueheren Fassungen. Ein
+    // `morphTo`-Eagerload ueber ALLE Typen wirft dort beim Aufloesen und
+    // nimmt dem Lauf die ganze Liste — dieselbe Falle, die das Meldungs-Paket
+    // in seinem Feed ausdruecklich umgeht. Deshalb laedt `DueReminders` je
+    // Typ und nur den aufloesbaren, und die Bruecke fasst die Beziehung nur
+    // an, wenn sie geladen ist.
+    erinnerungFuerBruecke(['subject_type' => 'Gibt\\Es\\Nicht\\Mehr', 'subject_id' => 999]);
+    $echte = erinnerungFuerBruecke();
+
+    expect(bruecke()->zustellen())->toBe(2);
+
+    // Beide zugestellt, und die mit dem echten Gegenstand hat ihn mitbekommen.
+    expect(Notification::query()->count())->toBe(2);
+    expect($echte->fresh()->delivered_at)->not->toBeNull();
+
+    $mitGegenstand = Notification::query()->whereNotNull('notifiable_type')->first();
+    expect($mitGegenstand->notifiable_type)->toBe($this->vorgang->getMorphClass());
+});
+
+it('greift NICHT lazy auf den Gegenstand zu', function () {
+    // Der Fehler, den 64 gruene Tests nicht gesehen haben und ein Durchlauf
+    // im Peppermint Manager in zehn Sekunden: `preventLazyLoading` laeuft in
+    // zwei der vier Produkte, und die Bruecke flog mitten im Lauf — nachdem
+    // die erste Erinnerung schon als zugestellt vermerkt war.
+    //
+    // Die Sperre ist in dieser Reihe jetzt an (siehe TestCase), dieser Test
+    // haelt die Absicht fest.
+    expect(Illuminate\Database\Eloquent\Model::preventsLazyLoading())->toBeTrue();
+
+    erinnerungFuerBruecke();
+
+    expect(bruecke()->zustellen())->toBe(1);
+    expect(Notification::query()->first()->notifiable_type)->toBe($this->vorgang->getMorphClass());
+});

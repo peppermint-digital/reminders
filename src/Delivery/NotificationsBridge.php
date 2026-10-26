@@ -91,7 +91,10 @@ class NotificationsBridge
             type: $art,
             title: $erinnerung->title ?: __('Erinnerung'),
             message: $erinnerung->note,
-            subject: $erinnerung->subject,
+            // NUR wenn geladen. Ein Zugriff auf die unaufgeloeste Beziehung
+            // wirft dort, wo `preventLazyLoading` laeuft — und ein Typ, dessen
+            // Klasse es nicht mehr gibt, bleibt absichtlich ungeladen.
+            subject: $erinnerung->relationLoaded('subject') ? $erinnerung->subject : null,
         );
 
         return $erinnerung->markDelivered();

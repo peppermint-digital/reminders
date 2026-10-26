@@ -2,6 +2,7 @@
 
 namespace Peppermint\Reminders\Tests;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -54,6 +55,15 @@ abstract class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        // So streng wie die Produkte: Zwei der vier aufnehmenden fahren
+        // `preventLazyLoading`. Ohne das hier konnte diese Reihe eine ganze
+        // Fehlerklasse nicht sehen — und hat sie am 26.10.2026 auch nicht
+        // gesehen: Die Zustell-Bruecke griff lazy auf `$erinnerung->subject`
+        // zu und flog im Peppermint Manager mitten im Lauf, nachdem die erste
+        // Erinnerung schon vermerkt war. Gefunden hat es ein Durchlauf gegen
+        // die laufende Anwendung, nicht 64 gruene Tests.
+        Model::preventLazyLoading();
 
         foreach (['personen', 'vorgaenge', 'termine'] as $tabelle) {
             if (! Schema::hasTable($tabelle)) {

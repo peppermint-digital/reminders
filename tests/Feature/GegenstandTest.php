@@ -42,7 +42,10 @@ it('haengt eine Erinnerung an einen Termin — in DERSELBEN Tabelle', function (
     }
 
     expect(Reminder::count())->toBe(2);
-    expect(Reminder::query()->get()->pluck('subject')->map(fn ($g) => $g::class)->all())
+    // `with('subject')`, nicht lazy: Die Reihe laeuft mit
+    // `preventLazyLoading`, so wie die Produkte — und genau das hat einen
+    // echten Fehler in der Zustell-Bruecke sichtbar gemacht.
+    expect(Reminder::query()->with('subject')->get()->pluck('subject')->map(fn ($g) => $g::class)->all())
         ->toBe([Vorgang::class, Termin::class]);
 });
 
