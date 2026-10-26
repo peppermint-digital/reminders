@@ -29,7 +29,9 @@ use Peppermint\Reminders\Delivery\NotificationsBridge;
  */
 class ErinnerungenZustellenCommand extends Command
 {
-    protected $signature = 'erinnerungen:zustellen {--limit=500 : Hoechstens so viele in einem Lauf}';
+    protected $signature = 'erinnerungen:zustellen
+                            {--limit=500 : Hoechstens so viele in einem Lauf}
+                            {--dry-run : Nur zeigen, was zugestellt wuerde}';
 
     protected $description = 'Stellt faellige Erinnerungen als Benachrichtigung zu und vermerkt, dass sie heraus sind.';
 
@@ -43,10 +45,27 @@ class ErinnerungenZustellenCommand extends Command
             return self::SUCCESS;
         }
 
-        $zugestellt = $bruecke->zustellen((int) $this->option('limit'));
+        $probelauf = (bool) $this->option('dry-run');
+
+        $bilanz = $bruecke->zustellen((int) $this->option('limit'), $probelauf);
+        $zugestellt = $bilanz['zugestellt'];
 
         $this->components->twoColumnDetail('faellig', (string) $wartend);
-        $this->components->twoColumnDetail('zugestellt', (string) $zugestellt);
+        $this->components->twoColumnDetail(
+            $probelauf ? 'zuzustellen (Probelauf)' : 'zugestellt',
+            (string) $zugestellt
+        );
+
+        // Erinnerungen, deren Person es nicht mehr gibt. GENANNT, mit
+        // Kennungen: Sonst sucht man den Unterschied zwischen „faellig" und
+        // „zugestellt" in der Zustellung, und er liegt in den Nutzerdaten.
+        if ($bilanz['ohne_empfaenger'] !== []) {
+            $this->components->warn(sprintf(
+                '%d Erinnerung(en) ohne Empfaenger uebergangen (Kennungen: %s).',
+                count($bilanz['ohne_empfaenger']),
+                implode(', ', array_slice($bilanz['ohne_empfaenger'], 0, 20))
+            ));
+        }
 
         // Der Rest gehoert GENANNT. Ein Deckel, der still kuerzt, liest sich
         // wie „alles erledigt" — und beim naechsten Lauf wieder.

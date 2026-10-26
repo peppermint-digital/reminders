@@ -206,6 +206,32 @@ package that writes itself into the scheduler takes it away.
 Schedule::command('erinnerungen:zustellen')->everyFiveMinutes()->withoutOverlapping();
 ```
 
+`--dry-run` shows what would go out and marks nothing. A reminder whose
+person no longer exists is skipped and **named with its id** — `user_id` is
+deliberately not a foreign key (the user table is named per product), so the
+database does not clean up, and without that line the gap between "due" and
+"delivered" looks like a delivery problem when it lives in the user data.
+
+### Giving the notification a destination
+
+The package knows a reminder HAS a subject and never how to get there — an
+address is product knowledge. Bind `ErinnerungsVerweis` and the notification
+gets its link, icon and wording:
+
+```php
+$this->app->bind(ErinnerungsVerweis::class, fn () => new class implements ErinnerungsVerweis {
+    public function fuer(Reminder $e): array
+    {
+        return ['link' => route('tasks.show', $e->subject_id), 'icon' => 'bell-ring'];
+    }
+});
+```
+
+Without a binding the notification stays plain — allowed, but without a
+destination. This hook exists because the CRM had a hand-written mail with an
+"open the task" button, and moving to the shared path would have dropped it
+without a single test going red.
+
 It exists because it was otherwise going to exist four times. Measured on
 26.10.2026: of four products, two had a delivery run and two did not — and in
 one of those two, reminders could be created through a form *and* an MCP tool

@@ -51,7 +51,7 @@ it('ist verfuegbar, weil das Meldungs-Paket installiert ist', function () {
 it('macht aus einer faelligen Erinnerung eine Meldung', function () {
     $erinnerung = erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(1);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
 
     $meldung = Notification::query()->first();
 
@@ -86,8 +86,8 @@ it('stellt zweimal hintereinander nicht doppelt zu', function () {
     // weggeklickte Erinnerung alle fuenf Minuten erneut.
     erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(1);
-    expect(bruecke()->zustellen())->toBe(0);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(0);
     expect(Notification::query()->count())->toBe(1);
 });
 
@@ -96,7 +96,7 @@ it('laesst Nicht-Faelliges, Weggeklicktes und Zugestelltes liegen', function () 
     erinnerungFuerBruecke(['is_dismissed' => true]);
     erinnerungFuerBruecke(['delivered_at' => now()->subHour()]);
 
-    expect(bruecke()->zustellen())->toBe(0);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(0);
     expect(Notification::query()->count())->toBe(0);
 });
 
@@ -112,7 +112,7 @@ it('vermerkt die Zustellung auch, wenn die Person diese Art abgestellt hat', fun
 
     $erinnerung = erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(1);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
     expect(Notification::query()->count())->toBe(0);
     expect($erinnerung->fresh()->delivered_at)->not->toBeNull();
 });
@@ -128,7 +128,7 @@ it('wirft NICHT, wenn die Meldungsart nirgends angemeldet ist', function () {
 
     erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(1);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
     expect(Notification::query()->count())->toBe(1);
 });
 
@@ -137,7 +137,7 @@ it('achtet den Deckel', function () {
         erinnerungFuerBruecke(['remind_at' => now()->subMinutes($i)]);
     }
 
-    expect(bruecke()->zustellen(2))->toBe(2);
+    expect(bruecke()->zustellen(2)['zugestellt'])->toBe(2);
     expect(Reminder::query()->undelivered()->count())->toBe(2);
 });
 
@@ -151,7 +151,7 @@ it('faellt nicht ueber einen Gegenstand, dessen Klasse es nicht mehr gibt', func
     erinnerungFuerBruecke(['subject_type' => 'Gibt\\Es\\Nicht\\Mehr', 'subject_id' => 999]);
     $echte = erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(2);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(2);
 
     // Beide zugestellt, und die mit dem echten Gegenstand hat ihn mitbekommen.
     expect(Notification::query()->count())->toBe(2);
@@ -173,6 +173,68 @@ it('greift NICHT lazy auf den Gegenstand zu', function () {
 
     erinnerungFuerBruecke();
 
-    expect(bruecke()->zustellen())->toBe(1);
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
     expect(Notification::query()->first()->notifiable_type)->toBe($this->vorgang->getMorphClass());
+});
+
+it('stellt im Probelauf nichts zu und zaehlt trotzdem', function () {
+    erinnerungFuerBruecke();
+    erinnerungFuerBruecke();
+
+    $bilanz = bruecke()->zustellen(probelauf: true);
+
+    expect($bilanz['zugestellt'])->toBe(2);
+    expect(Notification::query()->count())->toBe(0);
+    // Und nichts gilt als zugestellt — sonst waere der Probelauf ein Lauf.
+    expect(Reminder::query()->undelivered()->count())->toBe(2);
+});
+
+it('uebergeht einen Empfaenger, den es nicht mehr gibt — und NENNT ihn', function () {
+    // `user_id` ist absichtlich kein Fremdschluessel, die Datenbank raeumt
+    // also nicht auf. Ohne diese Pruefung entstuende eine Meldung fuer einen
+    // geloeschten Nutzer: eine Zeile, die niemand sehen kann, als zugestellt
+    // vermerkt. Das CRM hat den Fall von Hand behandelt — beim Verschmelzen
+    // waere er sonst verloren gegangen.
+    $weg = erinnerungFuerBruecke(['user_id' => 99999]);
+    $da = erinnerungFuerBruecke();
+
+    $bilanz = bruecke()->zustellen();
+
+    expect($bilanz['zugestellt'])->toBe(1);
+    expect($bilanz['ohne_empfaenger'])->toBe([$weg->id]);
+
+    expect(Notification::query()->count())->toBe(1);
+    // Die uebergangene bleibt offen, statt als zugestellt zu gelten.
+    expect($weg->fresh()->delivered_at)->toBeNull();
+    expect($da->fresh()->delivered_at)->not->toBeNull();
+});
+
+it('nimmt Verweis und Worte aus dem Produkt, wenn eines sie liefert', function () {
+    // Das Paket kennt keine Adressen. Ohne diesen Haken waere die Meldung
+    // eine Zeile ohne Ziel — im CRM waere der Knopf „Aufgabe oeffnen" beim
+    // Umzug weggefallen, und kein Test waere rot geworden.
+    $e = erinnerungFuerBruecke(['title' => 'Nachfassen']);
+
+    $mitVerweis = new Peppermint\Reminders\Delivery\NotificationsBridge(
+        app(Peppermint\Notifications\Delivery\Notifier::class),
+        new DueReminders,
+        new Peppermint\Reminders\Tests\Support\VerweisAufDenVorgang,
+    );
+
+    expect($mitVerweis->zustellen()['zugestellt'])->toBe(1);
+
+    $m = Notification::query()->first();
+    expect($m->link)->toBe('/vorgaenge/'.$this->vorgang->getKey());
+    expect($m->icon)->toBe('bell-ring');
+    expect($m->title)->toBe('Erinnerung: Nachfassen');
+});
+
+it('bleibt ohne gebundenen Verweis schlicht, statt zu scheitern', function () {
+    erinnerungFuerBruecke(['title' => 'Nachfassen']);
+
+    expect(bruecke()->zustellen()['zugestellt'])->toBe(1);
+
+    $m = Notification::query()->first();
+    expect($m->title)->toBe('Nachfassen');
+    expect($m->link)->toBeNull();
 });

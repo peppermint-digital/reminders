@@ -35,6 +35,11 @@ class NotificationsBridge
     public function __construct(
         private readonly Notifier $notifier,
         private readonly DueReminders $faellige,
+        /**
+         * Woran die Erinnerung haengt, in den Worten des Produkts. Ohne
+         * Bindung bleibt die Meldung schlicht — zulaessig, aber ohne Ziel.
+         */
+        private readonly ?ErinnerungsVerweis $verweis = null,
     ) {}
 
     /** Is peppermint/notifications installed at all? */
@@ -48,18 +53,57 @@ class NotificationsBridge
      *
      * @return int how many were handed over
      */
-    public function zustellen(int $hoechstens = 500): int
+    public function zustellen(int $hoechstens = 500, bool $probelauf = false): array
     {
-        $art = (string) config('reminders.delivery.type', 'reminder.due');
-        $zugestellt = 0;
+        $art = (string) config('reminders.delivery.type', 'reminder_due');
+        $bilanz = ['zugestellt' => 0, 'ohne_empfaenger' => []];
 
         foreach ($this->faellige->holen($hoechstens) as $erinnerung) {
+            // Einen Empfaenger, den es nicht mehr gibt, uebergehen — aber
+            // NENNEN. Sonst entsteht eine Meldung fuer einen geloeschten
+            // Nutzer: eine Zeile, die niemand sehen kann, als zugestellt
+            // vermerkt. Das CRM hat diesen Fall von Hand behandelt; beim
+            // Verschmelzen waere er sonst verloren gegangen.
+            if (! $this->empfaengerExistiert($erinnerung)) {
+                $bilanz['ohne_empfaenger'][] = $erinnerung->getKey();
+
+                continue;
+            }
+
+            if ($probelauf) {
+                $bilanz['zugestellt']++;
+
+                continue;
+            }
+
             if ($this->eine($erinnerung, $art)) {
-                $zugestellt++;
+                $bilanz['zugestellt']++;
             }
         }
 
-        return $zugestellt;
+        return $bilanz;
+    }
+
+    /**
+     * Gibt es die Person noch?
+     *
+     * `user_id` ist absichtlich KEIN Fremdschluessel — die Nutzertabelle heisst
+     * je Produkt anders. Die Datenbank raeumt also nicht auf, und eine
+     * Erinnerung kann eine Person nennen, die geloescht wurde.
+     */
+    private function empfaengerExistiert(Reminder $erinnerung): bool
+    {
+        $klasse = (string) config('reminders.user_model');
+
+        if (! class_exists($klasse)) {
+            // Ohne Nutzermodell kann hier nichts geprueft werden. Dann lieber
+            // zustellen als alles stillschweigend verwerfen.
+            return true;
+        }
+
+        return $klasse::query()
+            ->whereKey($erinnerung->{Reminder::column('user_id')})
+            ->exists();
     }
 
     /**
@@ -86,15 +130,22 @@ class NotificationsBridge
      */
     private function eine(Reminder $erinnerung, string $art): bool
     {
+        // Worte und Adressen gehoeren dem Produkt. Ohne Bindung bleibt es
+        // schlicht; mit Bindung bekommt die Meldung ihr Ziel — im CRM den
+        // Knopf „Aufgabe oeffnen", der beim Umzug sonst weggefallen waere.
+        $zusatz = $this->verweis?->fuer($erinnerung) ?? [];
+
         $this->notifier->send(
             to: $erinnerung->{Reminder::column('user_id')},
             type: $art,
-            title: $erinnerung->title ?: __('Erinnerung'),
+            title: $zusatz['title'] ?? ($erinnerung->title ?: __('Erinnerung')),
             message: $erinnerung->note,
             // NUR wenn geladen. Ein Zugriff auf die unaufgeloeste Beziehung
             // wirft dort, wo `preventLazyLoading` laeuft — und ein Typ, dessen
             // Klasse es nicht mehr gibt, bleibt absichtlich ungeladen.
             subject: $erinnerung->relationLoaded('subject') ? $erinnerung->subject : null,
+            link: $zusatz['link'] ?? null,
+            icon: $zusatz['icon'] ?? null,
         );
 
         return $erinnerung->markDelivered();
