@@ -4,6 +4,7 @@ namespace Peppermint\Reminders;
 
 use Illuminate\Support\ServiceProvider;
 use Peppermint\Reminders\Console\ErinnerungenZustellenCommand;
+use Peppermint\Reminders\Console\GegenstandEntspannenCommand;
 use Peppermint\Reminders\Delivery\NotificationsBridge;
 use InvalidArgumentException;
 use Peppermint\Reminders\Status\ReminderStatus;
@@ -54,6 +55,12 @@ class RemindersServiceProvider extends ServiceProvider
         // ein Befehl, der ohne sie unweigerlich wirft, waere schlimmer als
         // keiner: Er stuende in `artisan list` und in einem Zeitplan, und das
         // Rot kaeme erst nachts.
+        if ($this->app->runningInConsole()) {
+            // Haengt an keinem anderen Paket: Es geht nur um eine Spalte in
+            // der eigenen Tabelle.
+            $this->commands([GegenstandEntspannenCommand::class]);
+        }
+
         if ($this->app->runningInConsole() && NotificationsBridge::verfuegbar()) {
             $this->commands([ErinnerungenZustellenCommand::class]);
         }

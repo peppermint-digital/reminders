@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Peppermint\Reminders\Models\Reminder;
@@ -34,9 +35,33 @@ function uebernahmeLaufenLassen(): void
     (require __DIR__.'/../../database/migrations/2026_10_26_000100_upgrade_adopted_reminders_table.php')->up();
 }
 
-function entspannenLaufenLassen(): void
+/**
+ * Das Entspannen anstossen und den Rueckgabewert durchgeben.
+ *
+ * Fuehrt den BEFEHL aus, nicht mehr die Migration. Die Migration konnte es
+ * nicht: Sie war per Konfiguration abschaltbar und trug sich beim ersten
+ * `migrate` als erledigt ein, obwohl sie nichts getan hatte — danach greift
+ * keine Zustimmung mehr.
+ *
+ * Der Befehl WIRFT nicht, sondern gibt einen Rueckgabewert und sagt, was er
+ * vorgefunden hat. Deshalb pruefen die Tests hier den Wert und den Zustand
+ * der Spalte, nicht eine Ausnahme.
+ */
+function entspannenLaufenLassen(): int
 {
-    (require __DIR__.'/../../database/migrations/2026_10_26_000200_relax_legacy_subject_column.php')->up();
+    return Artisan::call('erinnerungen:gegenstand-entspannen');
+}
+
+/** Steht die alte Spalte noch auf Pflicht? */
+function alteSpalteIstPflicht(string $tabelle = 'task_reminders', string $spalte = 'task_id'): bool
+{
+    foreach (Schema::getColumns($tabelle) as $eintrag) {
+        if (($eintrag['name'] ?? null) === $spalte) {
+            return ($eintrag['nullable'] ?? true) === false;
+        }
+    }
+
+    return false;
 }
 
 beforeEach(function () {
@@ -150,8 +175,12 @@ it('liest die uebernommene Tabelle anschliessend als Modell', function () {
 it('entspannt die alte Spalte nur auf ausdrueckliche Ansage', function () {
     uebernahmeLaufenLassen();
 
-    // Vorgabe ist false — ein Deploy darf das nicht aus Versehen ausloesen.
-    entspannenLaufenLassen();
+    // Vorgabe ist false — und der Befehl LEHNT AB statt stillschweigend
+    // nichts zu tun. Genau diese Sichtbarkeit fehlte der Migration: Sie
+    // konnte „ich darf nicht" nicht von „ich bin schon gelaufen"
+    // unterscheiden.
+    expect(entspannenLaufenLassen())->toBe(1)
+        ->and(alteSpalteIstPflicht())->toBeTrue();
 
     DB::table('task_reminders')->insert([
         'task_id' => null,
@@ -166,7 +195,9 @@ it('entspannt die alte Spalte, wenn sie eingeschaltet ist', function () {
     uebernahmeLaufenLassen();
 
     config()->set('reminders.legacy_subject.relax', true);
-    entspannenLaufenLassen();
+
+    expect(entspannenLaufenLassen())->toBe(0)
+        ->and(alteSpalteIstPflicht())->toBeFalse();
 
     // Jetzt darf eine Termin-Erinnerung ohne Aufgabe in dieselbe Tabelle.
     DB::table('task_reminders')->insert([
@@ -195,8 +226,11 @@ it('verweigert das Entspannen, solange Zeilen ohne Gegenstand liegen', function 
 
     config()->set('reminders.legacy_subject.relax', true);
 
-    entspannenLaufenLassen();
-})->throws(RuntimeException::class, 'noch keinen Gegenstand');
+    // Abgelehnt — und die Bedingung steht unveraendert. Waere sie gefallen,
+    // waere diese Zeile ueber KEINE der beiden Referenzen mehr auffindbar.
+    expect(entspannenLaufenLassen())->toBe(1)
+        ->and(alteSpalteIstPflicht())->toBeTrue();
+});
 
 it('fuellt die alte Spalte mit, wenn ein Schreibweg nur den Gegenstand setzt', function () {
     // Eine uebernommene Tabelle fuehrt `task_id` als NOT NULL weiter, bis
