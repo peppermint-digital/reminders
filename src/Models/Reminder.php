@@ -69,6 +69,11 @@ class Reminder extends Model
      */
     public static function column(string $field): string
     {
+        // Ueberschreibbar, und die Scopes rufen sie als `static::` auf: Eine
+        // Unterklasse wie die Aufgaben-Erinnerung liest ihre Abbildung aus der
+        // Konfiguration IHRES Pakets. Mit `self::` waere die Bindung frueh und
+        // jede Ueberschreibung wirkungslos — ein Fehler, der nichts bricht,
+        // sondern still die falsche Abbildung benutzt.
         $mapping = config('reminders.columns.reminders', []);
 
         return is_array($mapping) ? (string) ($mapping[$field] ?? $field) : $field;
@@ -92,31 +97,31 @@ class Reminder extends Model
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(config('reminders.user_model'), self::column('user_id'));
+        return $this->belongsTo(config('reminders.user_model'), static::column('user_id'));
     }
 
     /** Not dismissed — still wants something from someone. */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where(self::column('is_dismissed'), false);
+        return $query->where(static::column('is_dismissed'), false);
     }
 
     /** Its moment has come or passed. */
     public function scopeDue(Builder $query): Builder
     {
-        return $query->where(self::column('remind_at'), '<=', now());
+        return $query->where(static::column('remind_at'), '<=', now());
     }
 
     /** Still ahead. */
     public function scopeUpcoming(Builder $query): Builder
     {
-        return $query->where(self::column('remind_at'), '>', now());
+        return $query->where(static::column('remind_at'), '>', now());
     }
 
     public function scopeForUser(Builder $query, Model|int|string $user): Builder
     {
         return $query->where(
-            self::column('user_id'),
+            static::column('user_id'),
             $user instanceof Model ? $user->getKey() : $user
         );
     }
@@ -130,14 +135,14 @@ class Reminder extends Model
     public function scopeForSubject(Builder $query, Model $subject): Builder
     {
         return $query
-            ->where(self::column('subject_type'), $subject->getMorphClass())
-            ->where(self::column('subject_id'), $subject->getKey());
+            ->where(static::column('subject_type'), $subject->getMorphClass())
+            ->where(static::column('subject_id'), $subject->getKey());
     }
 
     /** Not yet sent anywhere. The other half of the delivery query. */
     public function scopeUndelivered(Builder $query): Builder
     {
-        return $query->whereNull(self::column('delivered_at'));
+        return $query->whereNull(static::column('delivered_at'));
     }
 
     /**
@@ -149,12 +154,12 @@ class Reminder extends Model
      */
     public function scopeHandSet(Builder $query): Builder
     {
-        return $query->whereNull(self::column('source'));
+        return $query->whereNull(static::column('source'));
     }
 
     public function scopeFromSource(Builder $query, string $source): Builder
     {
-        return $query->where(self::column('source'), $source);
+        return $query->where(static::column('source'), $source);
     }
 
     /**
@@ -170,8 +175,8 @@ class Reminder extends Model
         }
 
         return $this->update([
-            self::column('is_dismissed') => true,
-            self::column('dismissed_at') => now(),
+            static::column('is_dismissed') => true,
+            static::column('dismissed_at') => now(),
         ]);
     }
 
@@ -188,7 +193,7 @@ class Reminder extends Model
             return false;
         }
 
-        $this->forceFill([self::column('delivered_at') => now()]);
+        $this->forceFill([static::column('delivered_at') => now()]);
 
         return $this->saveQuietly();
     }

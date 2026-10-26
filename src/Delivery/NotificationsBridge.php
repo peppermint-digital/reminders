@@ -3,7 +3,6 @@
 namespace Peppermint\Reminders\Delivery;
 
 use Peppermint\Notifications\Delivery\Notifier;
-use Peppermint\Reminders\Exceptions\NotificationTypeNotRegistered;
 use Peppermint\Reminders\Models\Reminder;
 
 /**
@@ -52,9 +51,6 @@ class NotificationsBridge
     public function zustellen(int $hoechstens = 500): int
     {
         $art = (string) config('reminders.delivery.type', 'reminder.due');
-
-        $this->pruefeArt($art);
-
         $zugestellt = 0;
 
         foreach ($this->faellige->holen($hoechstens) as $erinnerung) {
@@ -70,15 +66,23 @@ class NotificationsBridge
      * One reminder.
      *
      * Marked as delivered even when the notifier declines. We never pass a
-     * trigger, so the only reason it can decline is that the person switched
-     * this type off on every channel — and that is a delivery that correctly
-     * went nowhere, not one to retry every few minutes until the end of time.
+     * trigger, so the only reason it can decline is the person's own
+     * preference — and that is a delivery that correctly went nowhere, not one
+     * to retry every few minutes until the end of time.
      *
-     * The misconfiguration that looks identical from here — an unregistered
-     * type, which also just means "nobody wants to see it" — is caught before
-     * the loop by {@see pruefeArt()}. Without that split, "nobody wanted it"
-     * and "we broke it" would be the same return value, and the second one
-     * would mark every row as sent.
+     * ## Why there is no check that the type is registered
+     *
+     * There was one, built on a guess, and the guess was wrong. An
+     * unregistered type in `peppermint/notifications` is NOT invisible: its
+     * config carries an explicit `unknown_type` fallback, with the reasoning
+     * spelled out — "Bewusst ein Rueckfall und kein Fehler ... Sichtbar falsch
+     * ist besser als unsichtbar." The notification arrives, with a generic
+     * bell instead of its own icon.
+     *
+     * A product that wants its vocabulary complete sets
+     * `notifications.strict_types`, and then the notifier itself throws. That
+     * is the product's call about its own strictness, and a bridge that
+     * duplicates it would be a second answer to a settled question.
      */
     private function eine(Reminder $erinnerung, string $art): bool
     {
@@ -93,26 +97,4 @@ class NotificationsBridge
         return $erinnerung->markDelivered();
     }
 
-    /**
-     * @throws NotificationTypeNotRegistered
-     */
-    private function pruefeArt(string $art): void
-    {
-        $registriert = config('notifications.types', []);
-
-        // An empty list is a product that registers none and runs the notifier
-        // without strict types. Not our call to forbid — only a list that
-        // exists and omits us is a misconfiguration we can name.
-        if (! is_array($registriert) || $registriert === []) {
-            return;
-        }
-
-        $namen = array_keys($registriert) === range(0, count($registriert) - 1)
-            ? $registriert
-            : array_keys($registriert);
-
-        if (! in_array($art, $namen, true)) {
-            throw NotificationTypeNotRegistered::fuer($art);
-        }
-    }
 }

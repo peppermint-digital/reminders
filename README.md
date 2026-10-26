@@ -86,10 +86,16 @@ The dependency is a `suggest`, not a `require` — notifications pulls
 `peppermint/inbox` and `peppermint/ai-brain-bridge` along with it, and a
 reminder store should not force a messaging stack on a product without one.
 
-**Register the notification type.** An unregistered type counts as one nobody
-wants to see, so the delivery would run, succeed, mark everything as sent, and
-reach no one — the original bug, one layer up. The bridge therefore checks
-`config('notifications.types')` and throws rather than proceeding quietly.
+**Registering the notification type is optional.** An unregistered type is not
+invisible — `peppermint/notifications` carries an explicit `unknown_type`
+fallback, and the notification arrives with a generic bell instead of its own
+icon. Register it to get the icon and label; set
+`notifications.strict_types` if you want an unknown type to throw. The bridge
+deliberately does not second-guess either choice.
+
+> This paragraph said the opposite until 26.10.2026, and the bridge carried a
+> guard to match. Both were built on a guess about the notifications package
+> rather than a reading of it. The guard is gone.
 
 ## `delivered_at` is not `is_dismissed`
 

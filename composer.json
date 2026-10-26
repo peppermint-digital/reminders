@@ -16,7 +16,8 @@
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0|^11.0",
-        "pestphp/pest": "^3.0|^4.0"
+        "pestphp/pest": "^3.0|^4.0",
+        "peppermint/notifications": "dev-main"
     },
     "suggest": {
         "peppermint/notifications": "For the delivery bridge: a due reminder becomes a notification, routed by the person's own per-channel preferences. Optional — Regel 7 des Paketvertrags: nicht erzwungen, damit das Paket fuer sich installierbar bleibt. Without it the package still stores, queries and reports; the product delivers."
@@ -44,5 +45,19 @@
         }
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/peppermint-digital/notifications.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/peppermint-digital/inbox.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/peppermint-digital/ai-brain-bridge.git"
+        }
+    ]
 }

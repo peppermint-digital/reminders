@@ -11,7 +11,17 @@ abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
-        return [RemindersServiceProvider::class];
+        $anbieter = [RemindersServiceProvider::class];
+
+        // Nur wenn es da ist — `peppermint/notifications` ist ein `suggest`,
+        // kein `require` (Regel 7). Genauso entscheidet es sich im Produkt,
+        // und so laeuft die Reihe auch in einer Installation ohne die
+        // Entwicklungs-Abhaengigkeiten.
+        if (class_exists(\Peppermint\Notifications\NotificationsServiceProvider::class)) {
+            $anbieter[] = \Peppermint\Notifications\NotificationsServiceProvider::class;
+        }
+
+        return $anbieter;
     }
 
     protected function defineEnvironment($app): void
@@ -34,6 +44,10 @@ abstract class TestCase extends Orchestra
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if (is_dir($meldungen = __DIR__.'/../vendor/peppermint/notifications/database/migrations')) {
+            $this->loadMigrationsFrom($meldungen);
+        }
     }
 
     /** The tables the fixtures live in — subjects of two different kinds. */
