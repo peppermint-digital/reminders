@@ -148,10 +148,22 @@ return [
     |
     | `type` is the key the preferences are stored under. One string, because
     | it appears in the preference screens of every product that installs this.
+    |
+    | ⚠ NO DOT in it, and that is not cosmetic. A product that wants a default
+    | for this type writes it as
+    | `notifications.preferences.per_type.<type>.<channel>` — a CONFIG path,
+    | and a dotted type would be read as nesting: `per_type.reminder.due.email`
+    | looks for `['reminder' => ['due' => …]]`, never for the key
+    | `'reminder.due'`. The default would silently never apply.
+    |
+    | The HTTP endpoint tolerates dots (the type travels in the body, for the
+    | same reason spelled out in that package's routes file — in a path a dot
+    | looks like a file extension). The config path does not, and that is the
+    | one that bites quietly.
     */
     'delivery' => [
         'bridge_notifications' => true,
-        'type' => 'reminder.due',
+        'type' => 'reminder_due',
     ],
 
     /*

@@ -90,3 +90,21 @@ it('laesst Geschlummertes und Abgehaktes liegen', function () {
 
     expect(Notification::query()->count())->toBe(0);
 });
+
+it('traegt keinen Punkt in der Vorgabe-Art', function () {
+    // Nicht kosmetisch: Eine Vorgabe je Art schreibt ein Produkt als
+    // CONFIG-Pfad `notifications.preferences.per_type.<art>.<weg>`. Mit einem
+    // Punkt in der Art liest Laravel Verschachtelung — `per_type.reminder.due`
+    // sucht `['reminder' => ['due' => …]]` und findet den Schluessel
+    // `'reminder.due'` nie. Die Vorgabe greift dann lautlos nicht.
+    $art = config('reminders.delivery.type');
+
+    expect($art)->not->toContain('.');
+
+    // Gegenprobe, dass die Sorge echt ist: mit Punkt findet der Pfad nichts.
+    config()->set('notifications.preferences.per_type', ['mit.punkt' => ['email' => 'off']]);
+    expect(config('notifications.preferences.per_type.mit.punkt.email'))->toBeNull();
+
+    config()->set('notifications.preferences.per_type', ['ohnepunkt' => ['email' => 'off']]);
+    expect(config('notifications.preferences.per_type.ohnepunkt.email'))->toBe('off');
+});
