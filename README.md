@@ -190,6 +190,28 @@ Without it, nothing is backfilled — the migration cannot guess, and a wrong
 guess means a waiting reminder counts as done and reaches nobody.
 `is_dismissed` is not dropped.
 
+## The delivery command
+
+With `peppermint/notifications` installed, the package registers one:
+
+```
+php artisan erinnerungen:zustellen [--limit=500]
+```
+
+Same command, same name, same behaviour in every product. **The schedule stays
+in the product** — how often reminders go out is a product decision, and a
+package that writes itself into the scheduler takes it away.
+
+```php
+Schedule::command('erinnerungen:zustellen')->everyFiveMinutes()->withoutOverlapping();
+```
+
+It exists because it was otherwise going to exist four times. Measured on
+26.10.2026: of four products, two had a delivery run and two did not — and in
+one of those two, reminders could be created through a form *and* an MCP tool
+and reached nobody. Bug #880 unchanged, in a different window, invisible to
+7781 passing tests.
+
 ## `delivered_at` is not `is_dismissed`
 
 `is_dismissed` says *I reacted*. `delivered_at` says *it went out*. Treating one
