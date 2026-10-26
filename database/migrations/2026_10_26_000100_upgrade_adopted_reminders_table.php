@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Peppermint\Reminders\Models\Reminder;
 
 /**
  * Bring a table that predates this package up to its shape.
@@ -103,6 +104,27 @@ return new class extends Migration
         if ($fehlt('snooze_count')) {
             Schema::table($table, function (Blueprint $blueprint) {
                 $blueprint->unsignedInteger('snooze_count')->default(0);
+            });
+        }
+
+        // Wiederkehr (#8767). Ein Produkt, das eine eigene Fassung mitbringt,
+        // nennt seine Spalte womoeglich anders — das CRM fuehrt
+        // `parent_reminder_id`. Dafuer ist die Spalten-Abbildung in der
+        // Konfiguration da; hier entstehen die Namen des Pakets, und ein
+        // Produkt, das abbildet, bekommt sie gar nicht erst.
+        if ($fehlt('recurrence_pattern')) {
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->string('recurrence_pattern')->nullable();
+            });
+        }
+
+        if ($fehlt(Reminder::column('parent_id'))) {
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->unsignedBigInteger(Reminder::column('parent_id'))->nullable();
+            });
+
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->index([Reminder::column('parent_id'), Reminder::column('remind_at')]);
             });
         }
     }

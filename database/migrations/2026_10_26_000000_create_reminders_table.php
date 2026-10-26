@@ -71,6 +71,24 @@ return new class extends Migration
             // intends to act on.
             $blueprint->unsignedInteger('snooze_count')->default(0);
 
+            // Recurrence. The package STORES it and does not read it: what
+            // `weekly` means is the product's vocabulary, the same way
+            // peppermint/tasks ships no status words. No `is_recurring`
+            // boolean — that is `recurrence_pattern !== null`.
+            $blueprint->string('recurrence_pattern')->nullable();
+
+            // The ROOT of the series, not the predecessor. A flat chain can be
+            // asked "show me this whole series" in one query; a linked list
+            // has to be walked, and a walk over user data is a walk that
+            // eventually meets a gap.
+            //
+            // No foreign key, deliberately: a cascade would delete the history
+            // of a series when its first entry goes, and that history is the
+            // record that people were reminded.
+            $blueprint->unsignedBigInteger('parent_id')->nullable();
+
+            $blueprint->index(['parent_id', 'remind_at']);
+
             $blueprint->timestamps();
 
             // The query the delivery runs every few minutes: mine, due, open.

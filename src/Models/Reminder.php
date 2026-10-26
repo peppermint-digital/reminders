@@ -5,6 +5,7 @@ namespace Peppermint\Reminders\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
@@ -190,6 +191,117 @@ class Reminder extends Model
     public function scopeFromSource(Builder $query, string $source): Builder
     {
         return $query->where(static::column('source'), $source);
+    }
+
+    /**
+     * The first entry of the series this one belongs to.
+     *
+     * Null on the root itself — asking a root for its parent and getting
+     * itself back would make "is this the first one" unanswerable.
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(static::class, static::column('parent_id'));
+    }
+
+    /** The later entries of the series. Only meaningful on the root. */
+    public function instances(): HasMany
+    {
+        return $this->hasMany(static::class, static::column('parent_id'));
+    }
+
+    /** The id the whole series hangs off — this one, or its root. */
+    public function wurzelId(): int|string
+    {
+        return $this->{static::column('parent_id')} ?? $this->getKey();
+    }
+
+    /** Every entry of the series, the root included. */
+    public function scopeSerie(Builder $query, self $erinnerung): Builder
+    {
+        $wurzel = $erinnerung->wurzelId();
+
+        return $query->where(fn (Builder $q) => $q
+            ->whereKey($wurzel)
+            ->orWhere(static::column('parent_id'), $wurzel)
+        );
+    }
+
+    public function scopeWiederkehrend(Builder $query): Builder
+    {
+        return $query->whereNotNull(static::column('recurrence_pattern'));
+    }
+
+    /** Derived, never stored — same reason as the snooze state. */
+    public function istWiederkehrend(): bool
+    {
+        return $this->recurrence_pattern !== null;
+    }
+
+    /**
+     * The next entry of this series, at a moment the PRODUCT worked out.
+     *
+     * ## Why the moment comes in from outside
+     *
+     * The package stores `recurrence_pattern` and never reads it. What
+     * `weekly` means — and whether it skips weekends, and what happens on the
+     * 31st — is the product's vocabulary, exactly as peppermint/tasks ships no
+     * status words. A package that guessed here would be wrong in one product
+     * and unoverridable in all of them.
+     *
+     * `peppermint/calendar` can already resolve series, with RRULE. Depending
+     * on it would be the obvious move and the wrong one: it chains two core
+     * packages, and then a reminder store cannot ship without a calendar.
+     *
+     * ## Why it refuses to make a second one for the same moment
+     *
+     * The same reason `source` exists: something that generates rows and runs
+     * twice must not double them. Dedup is on (series, moment), so a second
+     * call returns the entry that is already there.
+     *
+     * ## What it does NOT touch
+     *
+     * The predecessor. Not its state, not its timestamps — a dismissed
+     * reminder is the record that someone was reminded and acted, and editing
+     * it afterwards rewrites that history.
+     */
+    public function naechsteInstanz(\DateTimeInterface $zeitpunkt): ?static
+    {
+        if (! $this->istWiederkehrend()) {
+            return null;
+        }
+
+        $wurzel = $this->wurzelId();
+
+        $vorhanden = static::query()
+            ->serie($this)
+            ->where(static::column('remind_at'), $zeitpunkt)
+            ->first();
+
+        if ($vorhanden !== null) {
+            return $vorhanden;
+        }
+
+        return static::query()->create([
+            static::column('subject_type') => $this->subject_type,
+            static::column('subject_id') => $this->subject_id,
+            static::column('user_id') => $this->{static::column('user_id')},
+            static::column('remind_at') => $zeitpunkt,
+            static::column('title') => $this->title,
+            static::column('note') => $this->note,
+            static::column('source') => $this->source,
+            static::column('recurrence_pattern') => $this->recurrence_pattern,
+            static::column('parent_id') => $wurzel,
+            // Frisch, ausdruecklich: Der Nachfolger hat noch niemanden
+            // erreicht und wurde von niemandem weggeschoben. Uebernaehme er
+            // das vom Vorgaenger, waere er bei der Geburt schon zugestellt
+            // und fiele aus der Zustellung heraus.
+            static::column('delivered_at') => null,
+            static::column('snoozed_until') => null,
+            static::column('snooze_count') => 0,
+            static::column('is_dismissed') => false,
+            static::column('dismissed_at') => null,
+        ]);
     }
 
     /** Derived, never stored: a boolean beside the timestamp would drift. */

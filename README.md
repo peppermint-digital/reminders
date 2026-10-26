@@ -119,6 +119,34 @@ out and was pushed aside — the more useful question anyway.
 matter: without the first, snoozing does nothing; without the second, a snoozed
 reminder falls out of every list and is invisible until it returns.
 
+## Recurrence
+
+```php
+$reminder->istWiederkehrend();                      // recurrence_pattern !== null
+$next = $reminder->naechsteInstanz($moment);        // the product worked out $moment
+Reminder::query()->serie($reminder)->get();         // the whole series, root included
+```
+
+**The package stores `recurrence_pattern` and never reads it.** What `weekly`
+means — whether it skips weekends, what happens on the 31st — is the product's
+vocabulary, exactly as `peppermint/tasks` ships no status words. So the moment
+comes in from outside; nothing here computes it.
+
+`peppermint/calendar` can already resolve series with RRULE. Depending on it
+would be the obvious move and the wrong one: it chains two core packages, and
+then a reminder store cannot ship without a calendar.
+
+The chain points at the **root**, not the predecessor — a flat chain answers
+"show me this series" in one query, where a linked list has to be walked, and a
+walk over user data eventually meets a gap.
+
+`naechsteInstanz()` refuses to make a second entry for the same moment (same
+reason `source` exists: something that generates rows and runs twice must not
+double them), gives the successor a **fresh** delivery and snooze state, and
+does not touch the predecessor — not even a dismissed one. That row is the
+record that someone was reminded and acted; editing it afterwards rewrites the
+history.
+
 ## `delivered_at` is not `is_dismissed`
 
 `is_dismissed` says *I reacted*. `delivered_at` says *it went out*. Treating one
