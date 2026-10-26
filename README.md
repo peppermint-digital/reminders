@@ -97,6 +97,36 @@ deliberately does not second-guess either choice.
 > guard to match. Both were built on a guess about the notifications package
 > rather than a reading of it. The guard is gone.
 
+## Generating reminders from a rule
+
+A start time or a deadline tells nobody on its own. Implement
+`ErinnerungsAnlass` and `Abgleich` does the rest:
+
+```php
+$bilanz = (new Abgleich($anlass))->fahren();
+// ['angelegt' => 2, 'verschoben' => 1, 'weggenommen' => 0, 'ohne_empfaenger' => []]
+```
+
+The product answers four questions — which things qualify, which moments each
+one deserves, what the wording is, and who gets told. Everything else happens
+once, here: chunking, dedup by `source`, leaving dismissed rows alone, moving
+a reminder when its moment or recipient changes, taking away what no longer
+has anything to say, and counting what it skipped.
+
+Two rules are load-bearing and were learned the hard way:
+
+- **Moving a reminder clears `delivered_at`.** What went out at the old moment
+  no longer applies; without the reset the moved reminder never fires, because
+  it counts as "already told you".
+- **A subject without a recipient is counted and named, not skipped quietly.**
+  A run that silently does nothing reports success, and the gap only surfaces
+  months later when somebody asks why they were never told.
+
+It exists because both consumers had written it: 238 lines in
+`peppermint/tasks`, 247 in `peppermint/calendar`, with the same parts.
+Question 3 of the package contract — *does every product write the same
+wiring?* — and the answer was yes.
+
 ## Snoozing
 
 ```php
