@@ -63,6 +63,27 @@ class Reminder extends Model
     }
 
     /**
+     * Der Morph-Typ, den eine Klasse in `subject_type` hinterlaesst.
+     *
+     * NICHT der Klassenname. Wer eine Morph-Map fuehrt, speichert deren Alias
+     * — AI Brain erzwingt eine, und dort steht in `subject_type` `task` und
+     * nicht `App\Models\Task`.
+     *
+     * Jede Stelle, die einen konfigurierten Klassennamen mit einem
+     * gespeicherten Typ vergleicht oder einen Typ schreibt, muss hier
+     * durchgehen. Sonst entstehen zwei Werte fuer dieselbe Sache: Die
+     * Uebernahme-Migration fuellte den Klassennamen zurueck, waehrend neue
+     * Zeilen den Alias tragen — und ein `morphTo` auf den nicht eingetragenen
+     * Klassennamen WIRFT bei erzwungener Map.
+     *
+     * @param  class-string<Model>  $klasse
+     */
+    public static function morphTypFuer(string $klasse): string
+    {
+        return (new $klasse)->getMorphClass();
+    }
+
+    /**
      * Package field name => actual column name.
      *
      * Only the fields the package itself queries are mapped. Attribute-level
@@ -415,7 +436,13 @@ class Reminder extends Model
                 return;
             }
 
-            if ((string) $erinnerung->{static::column('subject_type')} !== (string) $alt['type']) {
+            // Ueber den Morph-Typ vergleichen, nicht ueber den Klassennamen:
+            // Mit einer erzwungenen Morph-Map steht im Datensatz der Alias.
+            $erwartet = class_exists((string) $alt['type'])
+                ? static::morphTypFuer((string) $alt['type'])
+                : (string) $alt['type'];
+
+            if ((string) $erinnerung->{static::column('subject_type')} !== $erwartet) {
                 return;
             }
 

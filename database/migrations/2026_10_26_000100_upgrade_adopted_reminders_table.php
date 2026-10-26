@@ -164,7 +164,14 @@ return new class extends Migration
             ->whereNull('subject_id')
             ->whereNotNull($spalte)
             ->update([
-                'subject_type' => (string) $alt['type'],
+                // Den MORPH-TYP schreiben, nicht den Klassennamen. Wer eine
+                // Morph-Map fuehrt, speichert deren Alias — in AI Brain steht
+                // dort `task`, nicht `App\Models\Task`. Der Klassenname
+                // erzeugte zwei Werte fuer dieselbe Sache, und ein `morphTo`
+                // darauf wirft bei erzwungener Map.
+                'subject_type' => class_exists((string) $alt['type'])
+                    ? Reminder::morphTypFuer((string) $alt['type'])
+                    : (string) $alt['type'],
                 'subject_id' => DB::raw($spalte),
             ]);
     }
