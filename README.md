@@ -97,6 +97,28 @@ deliberately does not second-guess either choice.
 > guard to match. Both were built on a guess about the notifications package
 > rather than a reading of it. The guard is gone.
 
+## Snoozing
+
+```php
+$reminder->snooze(60);          // push it an hour out
+Reminder::snoozeSteps();        // [5, 15, 30, 60, 240, 1440, 10080] — minutes, configurable
+$reminder->istGeschlummert();   // derived, never stored
+```
+
+There is no `is_snoozed` column. Snoozed means `snoozed_until` is still in the
+future; a boolean beside the timestamp would be a second truth about the same
+fact, and the two drift.
+
+**`snooze()` clears `delivered_at`**, and that is the only reason snoozing
+works: the delivery asks for undelivered rows, so a reminder that kept its
+`delivered_at` would never come back. The button would appear to work and
+silently throw the reminder away. `snooze_count` keeps the record that it went
+out and was pushed aside — the more useful question anyway.
+
+`due` excludes a snoozed reminder and `upcoming` includes it. Both halves
+matter: without the first, snoozing does nothing; without the second, a snoozed
+reminder falls out of every list and is invisible until it returns.
+
 ## `delivered_at` is not `is_dismissed`
 
 `is_dismissed` says *I reacted*. `delivered_at` says *it went out*. Treating one

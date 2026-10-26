@@ -86,6 +86,8 @@ class Reminder extends Model
             'is_dismissed' => 'boolean',
             'dismissed_at' => 'datetime',
             'delivered_at' => 'datetime',
+            'snoozed_until' => 'datetime',
+            'snooze_count' => 'integer',
         ];
     }
 
@@ -106,16 +108,44 @@ class Reminder extends Model
         return $query->where(static::column('is_dismissed'), false);
     }
 
-    /** Its moment has come or passed. */
+    /**
+     * Its moment has come or passed, and it has not been pushed past it.
+     *
+     * The snooze clause is not a refinement — without it snoozing does
+     * nothing at all. The delivery would hand a snoozed reminder straight
+     * back out, which looks like a broken button rather than a missing
+     * `where`, and sends whoever debugs it to the wrong file.
+     */
     public function scopeDue(Builder $query): Builder
     {
-        return $query->where(static::column('remind_at'), '<=', now());
+        return $query
+            ->where(static::column('remind_at'), '<=', now())
+            ->where(fn (Builder $ohneSchlummer) => $ohneSchlummer
+                ->whereNull(static::column('snoozed_until'))
+                ->orWhere(static::column('snoozed_until'), '<=', now())
+            );
     }
 
-    /** Still ahead. */
+    /**
+     * Still ahead — including one pushed into the future.
+     *
+     * A snoozed reminder whose own moment has passed is neither due nor,
+     * under a plain `remind_at > now`, upcoming: it would fall out of both
+     * lists and be invisible until it came back. From the person's side it is
+     * plainly still ahead, so it belongs here.
+     */
     public function scopeUpcoming(Builder $query): Builder
     {
-        return $query->where(static::column('remind_at'), '>', now());
+        return $query->where(fn (Builder $q) => $q
+            ->where(static::column('remind_at'), '>', now())
+            ->orWhere(static::column('snoozed_until'), '>', now())
+        );
+    }
+
+    /** Pushed past its moment, not yet back. */
+    public function scopeSnoozed(Builder $query): Builder
+    {
+        return $query->where(static::column('snoozed_until'), '>', now());
     }
 
     public function scopeForUser(Builder $query, Model|int|string $user): Builder
@@ -160,6 +190,59 @@ class Reminder extends Model
     public function scopeFromSource(Builder $query, string $source): Builder
     {
         return $query->where(static::column('source'), $source);
+    }
+
+    /** Derived, never stored: a boolean beside the timestamp would drift. */
+    public function istGeschlummert(): bool
+    {
+        return $this->snoozed_until !== null && $this->snoozed_until->isFuture();
+    }
+
+    /**
+     * Push it away for a while.
+     *
+     * ## Why this clears `delivered_at`
+     *
+     * That is the whole point of snoozing: tell me again later. The delivery
+     * asks for undelivered rows, so a reminder that keeps its `delivered_at`
+     * is one that never comes back — the button would appear to work and
+     * silently throw the reminder away. The one failure mode this package
+     * exists to prevent, wearing a different hat.
+     *
+     * The record that it already went out once is not lost: `snooze_count`
+     * carries it, and it answers the more useful question anyway — not
+     * "was it delivered" but "how often has this been pushed away".
+     *
+     * @param  int  $minuten  how long to push it out
+     */
+    public function snooze(int $minuten): bool
+    {
+        if ($minuten < 1) {
+            return false;
+        }
+
+        $this->forceFill([
+            static::column('snoozed_until') => now()->addMinutes($minuten),
+            static::column('snooze_count') => (int) $this->snooze_count + 1,
+            static::column('delivered_at') => null,
+        ]);
+
+        return $this->save();
+    }
+
+    /**
+     * The steps a product offers. Configured, not hardcoded.
+     *
+     * The numbers are shared because they are the same everywhere; the WORDS
+     * are not here. A package that ships labels ships a language.
+     *
+     * @return array<int, int>
+     */
+    public static function snoozeSteps(): array
+    {
+        $stufen = config('reminders.snooze.steps', []);
+
+        return is_array($stufen) ? array_values(array_filter(array_map('intval', $stufen))) : [];
     }
 
     /**

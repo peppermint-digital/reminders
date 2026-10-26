@@ -88,6 +88,23 @@ return new class extends Migration
                 $blueprint->string('source')->nullable();
             });
         }
+
+        // Schlummern (#8766). Ein Produkt kann eine eigene Fassung davon
+        // mitbringen — das CRM fuehrt seit 07/2025 `snoozed_until` samt einem
+        // `is_snoozed` daneben. Das Bool wird NICHT uebernommen und nicht
+        // geloescht: Das Paket leitet den Zustand aus dem Zeitstempel ab, und
+        // was das Produkt sonst noch fuehrt, ist seine Sache.
+        if ($fehlt('snoozed_until')) {
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->dateTime('snoozed_until')->nullable();
+            });
+        }
+
+        if ($fehlt('snooze_count')) {
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->unsignedInteger('snooze_count')->default(0);
+            });
+        }
     }
 
     /**

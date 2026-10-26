@@ -73,6 +73,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Snooze
+    |--------------------------------------------------------------------------
+    |
+    | The steps a product offers, in minutes. The numbers are here because
+    | they are the same everywhere — five minutes, a quarter hour, an hour,
+    | tomorrow, next week. The WORDS are not: a package that ships labels
+    | ships a language, and the product already has one.
+    |
+    | Snoozing clears `delivered_at`, which is the only reason it works at
+    | all — see Reminder::snooze().
+    */
+    'snooze' => [
+        'steps' => [5, 15, 30, 60, 240, 1440, 10080],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Delivery
     |--------------------------------------------------------------------------
     |

@@ -60,6 +60,17 @@ return new class extends Migration
             // minutes, forever.
             $blueprint->dateTime('delivered_at')->nullable();
 
+            // Pushed away until later. No `is_snoozed` boolean next to it: that
+            // would be a second truth about the same fact, and the two drift.
+            // Snoozed means `snoozed_until` is still in the future — nothing
+            // else needs saying.
+            $blueprint->dateTime('snoozed_until')->nullable();
+
+            // How often it was pushed away. Not bookkeeping for its own sake:
+            // it is the only way to answer later which reminders nobody ever
+            // intends to act on.
+            $blueprint->unsignedInteger('snooze_count')->default(0);
+
             $blueprint->timestamps();
 
             // The query the delivery runs every few minutes: mine, due, open.

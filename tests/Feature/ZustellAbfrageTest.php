@@ -104,3 +104,90 @@ it('gibt jedem nur seine eigenen', function () {
     expect(Reminder::query()->forUser($this->person)->pluck('id')->all())->toBe([$meine->id]);
     expect(Reminder::query()->forUser($andere)->count())->toBe(1);
 });
+
+it('haelt eine geschlummerte Erinnerung aus der Zustellung heraus', function () {
+    // Ohne die Schlummer-Bedingung in `scopeDue` ist Schlummern wirkungslos:
+    // der Lauf gibt sie sofort wieder heraus.
+    $e = erinnerung();
+    $e->snooze(60);
+
+    expect($this->faellige->holen())->toHaveCount(0);
+    expect($this->faellige->anzahl())->toBe(0);
+});
+
+it('gibt sie heraus, sobald der Schlummer vorbei ist — Gegenprobe nach oben', function () {
+    // Die andere Richtung. Ohne sie wuesste man nicht, ob die Erinnerung
+    // schlummert oder einfach verschwunden ist.
+    $e = erinnerung();
+    $e->snooze(60);
+
+    expect($this->faellige->holen())->toHaveCount(0);
+
+    $this->travel(61)->minutes();
+
+    expect($this->faellige->holen())->toHaveCount(1);
+    expect($this->faellige->holen()->first()->id)->toBe($e->id);
+});
+
+it('setzt beim Schlummern die Zustellung zurueck', function () {
+    // Der Fehler, der aussieht wie ein funktionierender Knopf: Bleibt
+    // `delivered_at` stehen, filtert `undelivered()` die Erinnerung fuer
+    // immer weg — geschlummert heisst dann weggeworfen.
+    $e = erinnerung();
+    $e->markDelivered();
+
+    expect($e->fresh()->delivered_at)->not->toBeNull();
+
+    $e->fresh()->snooze(30);
+
+    expect($e->fresh()->delivered_at)->toBeNull();
+});
+
+it('zaehlt mit, wie oft weggeschoben wurde', function () {
+    $e = erinnerung();
+
+    $e->snooze(5);
+    expect($e->fresh()->snooze_count)->toBe(1);
+
+    $e->fresh()->snooze(5);
+    expect($e->fresh()->snooze_count)->toBe(2);
+});
+
+it('leitet den Schlummer-Zustand ab, statt ihn zu fuehren', function () {
+    // Kein `is_snoozed` neben dem Zeitstempel — zwei Wahrheiten laufen
+    // auseinander.
+    $e = erinnerung();
+
+    expect($e->istGeschlummert())->toBeFalse();
+
+    $e->snooze(60);
+    expect($e->fresh()->istGeschlummert())->toBeTrue();
+
+    $this->travel(61)->minutes();
+    expect($e->fresh()->istGeschlummert())->toBeFalse();
+});
+
+it('faellt eine geschlummerte Erinnerung nicht aus beiden Listen', function () {
+    // Faellig ist sie nicht, und mit einem schlichten `remind_at > now` waere
+    // sie auch nicht „kommend" — dann waere sie nirgends.
+    $e = erinnerung();
+    $e->snooze(60);
+
+    expect(Reminder::query()->active()->due()->count())->toBe(0);
+    expect(Reminder::query()->active()->upcoming()->pluck('id')->all())->toBe([$e->id]);
+    expect(Reminder::query()->snoozed()->count())->toBe(1);
+});
+
+it('weist eine unsinnige Schlummerdauer ab', function () {
+    $e = erinnerung();
+
+    expect($e->snooze(0))->toBeFalse();
+    expect($e->fresh()->snoozed_until)->toBeNull();
+});
+
+it('bietet die Stufen aus der Konfiguration an, ohne Woerter', function () {
+    expect(Reminder::snoozeSteps())->toBe([5, 15, 30, 60, 240, 1440, 10080]);
+
+    config()->set('reminders.snooze.steps', [10, 20]);
+    expect(Reminder::snoozeSteps())->toBe([10, 20]);
+});
