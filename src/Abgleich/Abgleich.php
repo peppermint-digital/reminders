@@ -33,11 +33,28 @@ class Abgleich
     public function __construct(private readonly ErinnerungsAnlass $anlass) {}
 
     /**
-     * @return array{angelegt: int, verschoben: int, weggenommen: int, ohne_empfaenger: array<int, mixed>}
+     * @return array{angelegt: int, verschoben: int, weggenommen: int, ohne_empfaenger: array<int, mixed>, verschobene_ids: array<int, mixed>}
      */
     public function fahren(int $haeppchen = 200): array
     {
-        $bilanz = ['angelegt' => 0, 'verschoben' => 0, 'weggenommen' => 0, 'ohne_empfaenger' => []];
+        $bilanz = [
+            'angelegt' => 0,
+            'verschoben' => 0,
+            'weggenommen' => 0,
+            'ohne_empfaenger' => [],
+            // Die Kennungen der verschobenen Zeilen.
+            //
+            // Nicht nur Information: Ein Produkt kann eine EIGENE Einmal-Sperre
+            // fuehren, die das Paket nicht kennt. AI Brain tut genau das — ein
+            // Cache-Schluessel `erinnerung:gemeldet:{id}`, aelter als
+            // `delivered_at`. Verschiebt sich eine Zeile, muss das Produkt
+            // seinen Schluessel vergessen, sonst feuert die Erinnerung zum
+            // neuen Zeitpunkt nie. Lautlos: Die Zeile sieht richtig aus.
+            //
+            // `delivered_at` setzt der Abgleich selbst zurueck; diese Liste ist
+            // fuer alles, was er nicht kennen kann.
+            'verschobene_ids' => [],
+        ];
 
         // Aufraeumen ZUERST. Ein Gegenstand, der aus der Menge gefallen ist,
         // soll seine Erinnerung verlieren, bevor irgendetwas Neues entsteht —
@@ -156,6 +173,7 @@ class Abgleich
         ])->save();
 
         $bilanz['verschoben']++;
+        $bilanz['verschobene_ids'][] = $vorhanden->getKey();
     }
 
     /**

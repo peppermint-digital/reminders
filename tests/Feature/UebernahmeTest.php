@@ -197,3 +197,38 @@ it('verweigert das Entspannen, solange Zeilen ohne Gegenstand liegen', function 
 
     entspannenLaufenLassen();
 })->throws(RuntimeException::class, 'noch keinen Gegenstand');
+
+it('fuellt die alte Spalte mit, wenn ein Schreibweg nur den Gegenstand setzt', function () {
+    // Eine uebernommene Tabelle fuehrt `task_id` als NOT NULL weiter, bis
+    // jemand das Entspannen einschaltet. Der gemeinsame Abgleich schreibt aber
+    // nur den Gegenstand — ohne diese Mitschrift laeuft er dort in eine
+    // Verletzung der Bedingung. Gefunden am 26.10.2026: 17 Tests auf einen
+    // Schlag.
+    uebernahmeLaufenLassen();
+
+    $erinnerung = Reminder::create([
+        'subject_type' => Vorgang::class,
+        'subject_id' => $this->vorgang->getKey(),
+        'user_id' => 7,
+        'remind_at' => now(),
+    ]);
+
+    expect((int) $erinnerung->task_id)->toBe($this->vorgang->getKey());
+});
+
+it('schreibt die alte Spalte NICHT, wenn der Gegenstand eine andere Art ist', function () {
+    // Eine Termin-Erinnerung hat keine Aufgabe. Ihr eine aufzuschreiben waere
+    // schlimmer als die leere Spalte — sie zeigte auf eine fremde Zeile.
+    config()->set('reminders.legacy_subject.relax', true);
+    uebernahmeLaufenLassen();
+    entspannenLaufenLassen();
+
+    $erinnerung = Reminder::create([
+        'subject_type' => 'App\\Models\\Termin',
+        'subject_id' => 42,
+        'user_id' => 7,
+        'remind_at' => now(),
+    ]);
+
+    expect($erinnerung->task_id)->toBeNull();
+});

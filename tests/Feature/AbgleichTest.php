@@ -199,3 +199,23 @@ it('arbeitet in Haeppchen', function () {
     expect((new Abgleich($this->anlass))->fahren(haeppchen: 2)['angelegt'])->toBe(7);
     expect(Reminder::count())->toBe(7);
 });
+
+it('nennt die Kennungen der verschobenen Zeilen', function () {
+    // Nicht nur Information: Ein Produkt kann eine EIGENE Einmal-Sperre
+    // fuehren, die das Paket nicht kennt — AI Brain haelt einen Cache-
+    // Schluessel `erinnerung:gemeldet:{id}`, aelter als `delivered_at`. Ohne
+    // diese Liste vergisst es ihn nicht, und die verschobene Erinnerung feuert
+    // zum neuen Zeitpunkt NIE. Lautlos, weil die Zeile richtig aussieht.
+    fahren($this->anlass);
+    $e = Reminder::query()->first();
+
+    $this->anlass->momenteJeGegenstand[$this->vorgang->getKey()]['test:eins'] = now()->addDays(4)->startOfSecond();
+
+    $bilanz = fahren($this->anlass);
+
+    expect($bilanz['verschobene_ids'])->toBe([$e->id]);
+
+    // Und ohne Verschiebung bleibt die Liste leer — sonst wuerde ein Produkt
+    // seine Sperre bei jedem Lauf wegwerfen.
+    expect(fahren($this->anlass)['verschobene_ids'])->toBe([]);
+});

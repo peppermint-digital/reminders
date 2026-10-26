@@ -380,6 +380,49 @@ class Reminder extends Model
         ]);
     }
 
+    /**
+     * Die alte Spalte mitfuellen, solange es eine gibt.
+     *
+     * Eine uebernommene Tabelle fuehrt ihren Vorgaenger-Fremdschluessel weiter
+     * — `task_reminders.task_id` ist NOT NULL und bleibt es, bis jemand das
+     * Entspannen ausdruecklich einschaltet. Ein Schreibweg, der nur den
+     * Gegenstand setzt, laeuft dort in eine Verletzung der Bedingung.
+     *
+     * Gefunden am 26.10.2026, als der gemeinsame Abgleich zum ersten Mal gegen
+     * eine uebernommene Tabelle schrieb: 17 Tests auf einen Schlag.
+     *
+     * Das Gegenstueck dazu steht in `Peppermint\Tasks\Models\TaskReminder`,
+     * das den Gegenstand aus `task_id` mitschreibt. Beide Richtungen sind
+     * noetig, solange beide Spalten existieren — und genau deshalb geht die
+     * alte erst, wenn nichts mehr auf ihr schreibt.
+     *
+     * Nur wenn der Gegenstand die Art ist, die die alte Spalte meinte: Eine
+     * Termin-Erinnerung hat keine Aufgabe, und ihr eine aufzuschreiben waere
+     * schlimmer als die leere Spalte.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $erinnerung): void {
+            $alt = config('reminders.legacy_subject');
+
+            if (! is_array($alt) || blank($alt['column'] ?? null) || blank($alt['type'] ?? null)) {
+                return;
+            }
+
+            $spalte = (string) $alt['column'];
+
+            if ($erinnerung->{$spalte} !== null) {
+                return;
+            }
+
+            if ((string) $erinnerung->{static::column('subject_type')} !== (string) $alt['type']) {
+                return;
+            }
+
+            $erinnerung->{$spalte} = $erinnerung->{static::column('subject_id')};
+        });
+    }
+
     /** Derived, never stored: a boolean beside the timestamp would drift. */
     public function istGeschlummert(): bool
     {
