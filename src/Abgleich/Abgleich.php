@@ -185,6 +185,40 @@ class Abgleich
      * @param  array<int, string>  $momentQuellen
      * @param  array<string, Reminder>  $vorhandene
      */
+    /**
+     * Zeilen wegnehmen, deren Moment der Anlass nicht mehr nennt.
+     *
+     * ## Das ist BREITER als die Regel, die es vorher gab
+     *
+     * `DueDateReminders::removeStaleRows()` raeumte je AUFGABE: Was weg war,
+     * war die Frist oder die Aufgabe selbst (`whereNotIn('task_id', $offen)`).
+     * Hier wird je MOMENT geraeumt — eine Aufgabe kann offen bleiben und ihre
+     * Vorwarn-Zeile trotzdem verlieren, weil `momente()` den Vorlauf
+     * weglaesst, sobald der Fristtag selbst vorbei ist.
+     *
+     * Gemessen in AI Brain am 26.10.2026, 21 lebende Zeilen: Der Unterschied
+     * traf fuenf `due:lead`-Zeilen zu noch offenen Aufgaben. Jede dieser
+     * Aufgaben behielt ihre `due:day`-Zeile — verloren ging nur ein
+     * Vorwarn-Moment, der nie wiederkommen kann. Keine Aufgabe wurde
+     * sprachlos.
+     *
+     * ## Wo es gefaehrlich bleibt
+     *
+     * Eine Aufgabe, die NUR eine Vorwarn-Zeile hat und keine zum Fristtag,
+     * verliert damit ihre letzte. Entstehen kann das nur, wenn die Zeile zum
+     * Tag von Hand entfernt wurde — `momente()` liefert den Tag immer mit.
+     * Wer diesen Fall einmal sieht, soll ihn hier nachlesen koennen und nicht
+     * raten muessen.
+     *
+     * ## Was stehen bleibt
+     *
+     * Eine weggeklickte Zeile. Das ist die Regel aus dem Kommentar der alten
+     * Fassung, und sie gilt unveraendert: „Der Verlauf soll zeigen, dass
+     * erinnert wurde."
+     *
+     * @param  list<string>  $momentQuellen
+     * @param  array<string, Model>  $vorhandene
+     */
     private function ueberzaehligeWegnehmen(Model $gegenstand, array $momentQuellen, array $vorhandene): int
     {
         $weg = 0;
