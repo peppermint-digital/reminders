@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Peppermint\Reminders\Status\ReminderStatus;
+use Peppermint\Reminders\Status\StatusRegistry;
 
 /**
  * A reminder a person set for themselves on something.
@@ -103,10 +105,84 @@ class Reminder extends Model
         return $this->belongsTo(config('reminders.user_model'), static::column('user_id'));
     }
 
-    /** Not dismissed — still wants something from someone. */
+    /**
+     * Still wants something from someone.
+     *
+     * ## Two clauses, and both of them are load-bearing
+     *
+     * `is_dismissed = false` applies ALWAYS, vocabulary or not. It is a hard
+     * veto: someone who clicked a reminder away has clicked it away, and no
+     * state in any vocabulary may bring it back. That is also what keeps the
+     * older {@see dismiss()} honest next to a vocabulary — otherwise a row
+     * dismissed through it would keep a waiting status and go on being
+     * delivered.
+     *
+     * The status clause is added only when a vocabulary exists, and it lets a
+     * NULL status through. Both halves matter:
+     *
+     * - No vocabulary registered — which is where every product starts — and
+     *   the boolean alone rules. Reading an empty registry as "no state waits"
+     *   would make this scope match nothing, and the delivery would quietly
+     *   stop delivering. That is not a hypothetical: it is the shape of Bug
+     *   #880, which is why this package exists.
+     * - A NULL status during a migration is a row the backfill has not reached
+     *   yet. Excluded by a plain `whereIn`, it would fall out of the delivery
+     *   silently — the reminder looks fine and reaches nobody.
+     */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where(static::column('is_dismissed'), false);
+        $query->where(static::column('is_dismissed'), false);
+
+        $verzeichnis = app(StatusRegistry::class);
+
+        if ($verzeichnis->istLeer()) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $wartend) => $wartend
+            ->whereIn(static::column('status'), $verzeichnis->wartendeSchluessel())
+            ->orWhereNull(static::column('status'))
+        );
+    }
+
+    /** The registered state, or null while this product has no vocabulary. */
+    public function statusEintrag(): ?ReminderStatus
+    {
+        $verzeichnis = app(StatusRegistry::class);
+        $key = $this->{static::column('status')};
+
+        return $key !== null && $verzeichnis->has($key) ? $verzeichnis->get($key) : null;
+    }
+
+    /**
+     * Move it to a registered state, keeping the boolean in step.
+     *
+     * The boolean is not a second truth here, it is a maintained derivation —
+     * and it is the bridge: four products run the old column today, and
+     * `scopeActive` leans on it as its veto. Both writers keep it correct, so
+     * neither path can strand a row. It goes once every product has a
+     * vocabulary, not before.
+     *
+     * Throws on an unregistered key rather than storing it. A row whose state
+     * nobody can read would either nag forever or reach nobody, and nothing
+     * would look broken.
+     */
+    public function setzeStatus(string $key): bool
+    {
+        $status = app(StatusRegistry::class)->get($key);
+
+        $wartet = $status->wartetNoch();
+
+        $this->forceFill([
+            static::column('status') => $key,
+            static::column('is_dismissed') => ! $wartet,
+            // Idempotent in beide Richtungen: Ein zweites Abschliessen
+            // verschiebt den Zeitpunkt nicht, und wer eine Erinnerung zurueck
+            // ins Wartende holt, soll keinen Abschluss-Zeitpunkt behalten.
+            static::column('dismissed_at') => $wartet ? null : ($this->dismissed_at ?? now()),
+        ]);
+
+        return $this->save();
     }
 
     /**

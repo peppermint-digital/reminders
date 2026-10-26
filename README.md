@@ -147,6 +147,49 @@ does not touch the predecessor — not even a dismissed one. That row is the
 record that someone was reminded and acted; editing it afterwards rewrites the
 history.
 
+## Status vocabulary
+
+The package ships none, for the same reason `peppermint/tasks` ships no task
+statuses: two systems legitimately use different words, and forcing a shared
+one means rewriting every row, query and screen of one of them.
+
+```php
+// config/reminders.php
+'statuses' => [Pending::class, Acknowledged::class, Dismissed::class],
+```
+
+Each state answers one question — **does this still want something from
+someone?** The delivery asks it, so a wrong answer either nags people about
+what they already handled or reaches nobody.
+
+```php
+$reminder->setzeStatus('dismissed');   // validated, keeps is_dismissed in step
+$reminder->statusEintrag();            // the registered state, or null
+```
+
+**An empty vocabulary is valid, and the fallback is load-bearing.** With
+nothing registered the plain `is_dismissed` boolean rules alone. Reading an
+empty registry as "no state waits" would make `active` match nothing and the
+delivery would quietly stop — the exact shape of the bug this package exists
+to prevent. A `null` status is let through for the same reason: during a
+backfill it means "not reached yet", not "not waiting".
+
+`is_dismissed` is a **hard veto** in `active`, vocabulary or not. Someone who
+clicked a reminder away has clicked it away, and no registered state brings it
+back. That is also what keeps the older `dismiss()` honest alongside a
+vocabulary.
+
+Moving an existing product across: name your two words and the upgrade
+migration fills `status` from the boolean.
+
+```php
+'legacy_status' => ['waiting' => 'pending', 'dismissed' => 'dismissed'],
+```
+
+Without it, nothing is backfilled — the migration cannot guess, and a wrong
+guess means a waiting reminder counts as done and reaches nobody.
+`is_dismissed` is not dropped.
+
 ## `delivered_at` is not `is_dismissed`
 
 `is_dismissed` says *I reacted*. `delivered_at` says *it went out*. Treating one

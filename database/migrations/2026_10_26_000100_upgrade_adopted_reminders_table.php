@@ -47,6 +47,7 @@ return new class extends Migration
 
         $this->ergaenzeSpalten($table);
         $this->fuelleGegenstandNach($table);
+        $this->fuelleStatusNach($table);
     }
 
     /**
@@ -112,6 +113,16 @@ return new class extends Migration
         // `parent_reminder_id`. Dafuer ist die Spalten-Abbildung in der
         // Konfiguration da; hier entstehen die Namen des Pakets, und ein
         // Produkt, das abbildet, bekommt sie gar nicht erst.
+        if ($fehlt('status')) {
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->string('status')->nullable();
+            });
+
+            Schema::table($table, function (Blueprint $blueprint) {
+                $blueprint->index(['status', 'remind_at']);
+            });
+        }
+
         if ($fehlt('recurrence_pattern')) {
             Schema::table($table, function (Blueprint $blueprint) {
                 $blueprint->string('recurrence_pattern')->nullable();
@@ -156,6 +167,40 @@ return new class extends Migration
                 'subject_type' => (string) $alt['type'],
                 'subject_id' => DB::raw($spalte),
             ]);
+    }
+
+    /**
+     * Fill `status` from the boolean it replaces.
+     *
+     * Only when the product NAMED its two words. The migration cannot guess
+     * them: a wrong guess means either a handled reminder starts waiting again
+     * or — worse — a waiting one counts as done and reaches nobody. That is
+     * Bug #880 in a new wrapper, so without the configuration this does
+     * nothing at all.
+     *
+     * `is_dismissed` keeps its values. The package goes on writing it and
+     * `scopeActive` uses it as a veto, so the products that have not moved yet
+     * are unaffected — and the way back stays a config change.
+     */
+    private function fuelleStatusNach(string $table): void
+    {
+        $alt = config('reminders.legacy_status');
+
+        if (! is_array($alt) || blank($alt['waiting'] ?? null) || blank($alt['dismissed'] ?? null)) {
+            return;
+        }
+
+        if (! Schema::hasColumn($table, 'status') || ! Schema::hasColumn($table, 'is_dismissed')) {
+            return;
+        }
+
+        // Nur wo noch nichts steht. Zweimal laufen aendert nichts, und eine
+        // Zeile, der jemand schon einen Status gegeben hat, behaelt ihn.
+        DB::table($table)->whereNull('status')->where('is_dismissed', true)
+            ->update(['status' => (string) $alt['dismissed']]);
+
+        DB::table($table)->whereNull('status')->where('is_dismissed', false)
+            ->update(['status' => (string) $alt['waiting']]);
     }
 
     /**

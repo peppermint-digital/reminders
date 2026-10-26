@@ -73,6 +73,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Status vocabulary
+    |--------------------------------------------------------------------------
+    |
+    | The states this application knows. Each entry is the class name of a
+    | Peppermint\Reminders\Status\ReminderStatus.
+    |
+    | The package ships NONE, and an empty list is a valid answer. While the
+    | list is empty the package falls back to the plain `is_dismissed` boolean
+    | it shipped with — that fallback is load-bearing, not politeness: an empty
+    | registry read as "no state waits" would make `scopeActive` match nothing,
+    | and the delivery would quietly stop delivering.
+    |
+    | What every vocabulary must answer is one question — does this state still
+    | want something from someone? The delivery asks it, so a wrong answer
+    | either nags people about what they handled or reaches nobody at all.
+    */
+    'statuses' => [],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Legacy status backfill
+    |--------------------------------------------------------------------------
+    |
+    | Only for a product moving from the boolean to a vocabulary. Name the two
+    | keys and the upgrade migration fills `status` from `is_dismissed`:
+    |
+    |   'legacy_status' => ['waiting' => 'pending', 'dismissed' => 'dismissed'],
+    |
+    | Without this, nothing is backfilled. The migration cannot guess: only the
+    | product knows its own words, and a wrong guess means either a handled
+    | reminder starts waiting again or — worse — a waiting one counts as done
+    | and reaches nobody. That is Bug #880 in a new wrapper, so the migration
+    | would rather do nothing.
+    |
+    | `is_dismissed` is NOT dropped. As long as it keeps its values the way
+    | back is a config change; the package also keeps writing it, so the
+    | fallback above stays valid for the products that have not moved yet.
+    */
+    'legacy_status' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Snooze
     |--------------------------------------------------------------------------
     |

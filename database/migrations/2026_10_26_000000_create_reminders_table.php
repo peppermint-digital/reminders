@@ -55,6 +55,11 @@ return new class extends Migration
             $blueprint->boolean('is_dismissed')->default(false);
             $blueprint->dateTime('dismissed_at')->nullable();
 
+            // The state, in this application's own words. Nullable because the
+            // package ships no vocabulary and an application need not have one
+            // — then the boolean above rules alone.
+            $blueprint->string('status')->nullable();
+
             // Went out — not the same as "someone reacted". Without this column
             // a delivery re-sends every reminder nobody clicked away, every few
             // minutes, forever.
@@ -93,6 +98,7 @@ return new class extends Migration
 
             // The query the delivery runs every few minutes: mine, due, open.
             $blueprint->index(['user_id', 'remind_at', 'is_dismissed']);
+            $blueprint->index(['status', 'remind_at']);
 
             // Everything on one thing — what a subject owner asks before it
             // deletes the subject.
