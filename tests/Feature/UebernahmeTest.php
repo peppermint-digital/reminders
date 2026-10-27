@@ -266,3 +266,79 @@ it('schreibt die alte Spalte NICHT, wenn der Gegenstand eine andere Art ist', fu
 
     expect($erinnerung->task_id)->toBeNull();
 });
+
+/**
+ * Den Rueckbau anstossen.
+ *
+ * Eigene Hilfe, weil keine Testreihe `down()` von sich aus aufruft:
+ * `RefreshDatabase` baut die Datenbank neu auf, es rollt nichts zurueck.
+ * Genau deshalb blieb das Loch unten unentdeckt, bis eine Nachbarsitzung
+ * nach der Zeile gefragt hat.
+ */
+function anlageRueckbauen(): void
+{
+    (require __DIR__.'/../../database/migrations/2026_10_26_000000_create_reminders_table.php')->down();
+}
+
+it('nimmt eine UEBERNOMMENE Tabelle beim Rueckbau nicht weg', function () {
+    /*
+    | Der gefaehrlichste Fall, und er war offen.
+    |
+    | `down()` machte `Schema::dropIfExists(config('reminders.tables.reminders'))`
+    | ohne jede Pruefung. In allen vier Produkten zeigt dieser Schluessel auf
+    | die eigene, gewachsene Tabelle — `task_reminders` im CRM, Manager und
+    | AI Brain, `ticket_reminders` in der Verwaltung. Ein `migrate:rollback`
+    | haette sie gedroppt.
+    |
+    | Gemessen am 27.10.2026 in Produktion: 27 lebende Zeilen im Manager,
+    | 15 in AI Brain. Und auf dem Server gibt es keinen Nachtlauf und kein
+    | binlog — es waere kein Rueckweg gewesen, sondern ein Ende.
+    */
+    // `alteTabelle()` steht schon im `beforeEach` — die Tabelle ist da.
+    config()->set('reminders.tables.reminders', 'task_reminders');
+    expect(Schema::hasTable('task_reminders'))->toBeTrue();
+
+    anlageRueckbauen();
+
+    expect(Schema::hasTable('task_reminders'))->toBeTrue(
+        'Eine Tabelle, die das Paket nicht angelegt hat, darf es nicht wegnehmen.'
+    );
+});
+
+it('nimmt eine Tabelle mit Inhalt beim Rueckbau nicht weg', function () {
+    // Zweiter Riegel, unabhaengig vom ersten: Auch eine Tabelle, die diese
+    // Migration SELBST angelegt hat, kann inzwischen gefuellt sein. Dann ist
+    // der Rueckbau nicht mehr das Gegenstueck zum Aufbau.
+    config()->set('reminders.tables.reminders', 'reminders');
+    config()->set('reminders.legacy_subject', null);
+
+    (require __DIR__.'/../../database/migrations/2026_10_26_000000_create_reminders_table.php')->up();
+
+    // `subject_type` und `subject_id` sind in der eigenen Tabelle des Pakets
+    // Pflicht — eine Erinnerung ohne Gegenstand gibt es dort nicht.
+    DB::table('reminders')->insert([
+        'subject_type' => Vorgang::class,
+        'subject_id' => $this->vorgang->getKey(),
+        'user_id' => 7,
+        'remind_at' => now(),
+        'title' => 'Eine Zeile, die jemandem gehoert',
+    ]);
+
+    anlageRueckbauen();
+
+    expect(Schema::hasTable('reminders'))->toBeTrue('Eine gefuellte Tabelle bleibt stehen.');
+});
+
+it('nimmt die eigene, leere Tabelle beim Rueckbau sehr wohl weg', function () {
+    // Die Gegenprobe. Ohne sie koennte `down()` auch schlicht nie etwas tun,
+    // und die beiden Tests oben waeren gruen, ohne etwas zu pruefen.
+    config()->set('reminders.tables.reminders', 'reminders');
+    config()->set('reminders.legacy_subject', null);
+
+    (require __DIR__.'/../../database/migrations/2026_10_26_000000_create_reminders_table.php')->up();
+    expect(Schema::hasTable('reminders'))->toBeTrue();
+
+    anlageRueckbauen();
+
+    expect(Schema::hasTable('reminders'))->toBeFalse();
+});

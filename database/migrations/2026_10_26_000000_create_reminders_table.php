@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -110,8 +111,61 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Nur wegnehmen, was diese Migration selbst angelegt hat.
+     *
+     * ## Was hier stand, und warum es gefaehrlich war
+     *
+     * `Schema::dropIfExists(config('reminders.tables.reminders'))` — ohne
+     * jede Pruefung.
+     *
+     * `up()` kehrt korrekt um, wenn die Tabelle schon da ist: Wer das Paket
+     * auf eine BESTEHENDE Tabelle setzt, soll sie behalten. `down()` tat das
+     * nicht. In jedem der vier Produkte zeigt
+     * `reminders.tables.reminders` auf die eigene, gewachsene Tabelle —
+     * `task_reminders` im CRM, Manager und AI Brain, `ticket_reminders` in der
+     * Verwaltung. Ein `migrate:rollback` haette sie gedroppt.
+     *
+     * Gemessen am 27.10.2026 in Produktion: 27 lebende Zeilen in
+     * `peppermint-manager.task_reminders`, 15 in AI Brain. Die waeren weg
+     * gewesen — und auf breezy-star gibt es keinen Nachtlauf und kein
+     * binlog, also auch keinen Rueckweg.
+     *
+     * Aufgefallen ist es durch die Rueckfrage einer anderen Sitzung nach
+     * genau dieser Zeile. Kein Test hat es gesehen: Eine Testreihe mit
+     * `RefreshDatabase` ruft `down()` nie auf.
+     *
+     * ## Die zwei Riegel
+     *
+     * 1. **Uebernommen?** Ist eine alte Gegenstands-Spalte konfiguriert und
+     *    in der Tabelle vorhanden, ist sie aelter als dieses Paket. Dasselbe
+     *    Kennzeichen benutzt das Paket an jeder anderen Stelle auch.
+     * 2. **Hat sie Inhalt?** Eine Tabelle mit Zeilen nimmt kein `down()`
+     *    weg. Auch eine frisch angelegte kann in der Zwischenzeit gefuellt
+     *    worden sein, und dann ist der Rueckbau nicht mehr das Gegenstueck
+     *    zum Aufbau.
+     */
     public function down(): void
     {
-        Schema::dropIfExists((string) config('reminders.tables.reminders', 'reminders'));
+        $table = (string) config('reminders.tables.reminders', 'reminders');
+
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+
+        $alt = config('reminders.legacy_subject');
+        $spalte = is_array($alt) ? (string) ($alt['column'] ?? '') : '';
+
+        if ($spalte !== '' && Schema::hasColumn($table, $spalte)) {
+            // Uebernommene Tabelle. Sie gehoert dem Produkt, nicht dieser
+            // Migration.
+            return;
+        }
+
+        if (DB::table($table)->exists()) {
+            return;
+        }
+
+        Schema::drop($table);
     }
 };
