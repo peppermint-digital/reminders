@@ -12,6 +12,13 @@ use Illuminate\Database\Eloquent\Model;
  * — anlegen, verschieben, Abgehaktes in Ruhe lassen, Verwaistes wegnehmen,
  * Bilanz fuehren — macht {@see Abgleich}, einmal fuer alle.
  *
+ * ## Diese Sorte erinnert EINEN Menschen
+ *
+ * Fuer einen Gegenstand mit einer zustaendigen Person: Eine Aufgabe hat ihren
+ * Bearbeiter, und wechselt der, WANDERT die Erinnerung zu ihm. Wer mehrere
+ * Menschen zu demselben Gegenstand erinnern will — jeden zu seiner eigenen
+ * Zeit —, nimmt {@see AnlassMitEmpfaengern}.
+ *
  * ## Warum es diese Fuge gibt
  *
  * Am 26.10.2026 gemessen, als der Kalender als zweiter Abnehmer dazukam:
@@ -23,42 +30,8 @@ use Illuminate\Database\Eloquent\Model;
  * Dieselbe Form hatte das Postfach-Paket: Nach dem zweiten Abnehmer standen
  * dort fuenf handgeschriebene Quellen, von denen vier dasselbe taten.
  */
-interface ErinnerungsAnlass
+interface ErinnerungsAnlass extends Anlass
 {
-    /**
-     * Die Quellen, die DIESER Anlass besitzt.
-     *
-     * `source` trennt erzeugte Zeilen von denen, die ein Mensch gesetzt hat —
-     * und trennt auch zwei Anlaesse voneinander. Ein Abgleich raeumt nur
-     * zwischen seinen eigenen Quellen auf; sonst nimmt er dem Nachbarn die
-     * Zeilen weg.
-     *
-     * @return array<int, string>
-     */
-    public function quellen(): array;
-
-    /**
-     * Die Klasse der Gegenstaende — die des PRODUKTS, nicht die eines Pakets.
-     *
-     * Gebraucht fuer den Morph-Typ und fuer das Aufraeumen, und deshalb auch
-     * dann, wenn gerade gar kein Gegenstand infrage kommt. Steht hier die
-     * Klasse eines Pakets, traegt `subject_type` ein Modell, das niemand
-     * instanziiert — und nichts findet die Erinnerungen wieder. Lautlos.
-     *
-     * @return class-string<Model>
-     */
-    public function gegenstandsKlasse(): string;
-
-    /**
-     * Die Gegenstaende, die gerade Erinnerungen verdienen.
-     *
-     * Als Abfrage, nicht als Liste: Der Abgleich arbeitet in Haeppchen, weil
-     * „alle offenen Aufgaben" in einem gewachsenen Produkt keine Handvoll ist.
-     *
-     * @return \Illuminate\Database\Eloquent\Builder<Model>
-     */
-    public function gegenstaende();
-
     /**
      * Wann erinnert wird — je Quelle ein Zeitpunkt, in UTC.
      *
@@ -72,9 +45,6 @@ interface ErinnerungsAnlass
      * @return array<string, DateTimeInterface>
      */
     public function momente(Model $gegenstand): array;
-
-    /** Was in der Meldung steht. Worte gehoeren dem Produkt. */
-    public function wortlaut(Model $gegenstand, string $quelle): string;
 
     /**
      * Wer erinnert wird, oder null.

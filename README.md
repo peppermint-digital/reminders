@@ -127,6 +127,53 @@ It exists because both consumers had written it: 238 lines in
 Question 3 of the package contract — *does every product write the same
 wiring?* — and the answer was yes.
 
+### When several people share one subject
+
+`ErinnerungsAnlass` answers "who" with exactly one person, which fits a
+subject that has somebody responsible for it: a task has its assignee, and
+when that changes the reminder **moves** with it.
+
+An appointment does not work that way. It has an organiser *and* attendees,
+and since 29.10.2026 each of them may choose their own lead time — so the same
+appointment has one moment per person, not one moment. For that, implement
+`AnlassMitEmpfaengern` instead:
+
+```php
+public function empfaengerMomente(Model $gegenstand): array
+{
+    return [
+        7  => ['event:lead' => $start->subMinutes(15)],
+        12 => ['event:lead' => $start->subMinutes(30)],
+    ];
+}
+```
+
+A person missing from the answer gets no reminder, and an existing row of
+theirs is taken away — that is how "do not remind me about appointments" is
+expressed, without a second field for it.
+
+The two kinds are deliberately separate, and the difference is not cosmetic:
+
+| | recipient changes | surplus row |
+|---|---|---|
+| `ErinnerungsAnlass` | the row **moves** to them | per source |
+| `AnlassMitEmpfaengern` | one joins, one leaves | per source **and** person |
+
+A row that moved between people would hand a third party somebody else's
+history — their `delivered_at`, their dismissal. So it does not move; one row
+goes, another is created.
+
+One more difference: an empty answer is **not** counted as "without
+recipient". An appointment where everyone switched reminders off looks exactly
+like one with no participants, and a run that warned about it would be warning
+about a decision people made on purpose. An `AnlassMitEmpfaengern` that can
+tell the two apart — the calendar can — reports it itself.
+
+> `ErinnerungsAnlass` was split on 29.10.2026: the four methods that say
+> nothing about recipients now live in a parent interface, `Anlass`. Nothing
+> changed for implementors — the same methods are still required, and
+> `Abgleich` still takes an `ErinnerungsAnlass`.
+
 ## Snoozing
 
 ```php
